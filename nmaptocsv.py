@@ -20,7 +20,7 @@
 # along with nmaptocsv.  If not, see <http://www.gnu.org/licenses/>.
 
 # Global imports
-import sys, re, csv, struct, socket, itertools
+import sys, re, csv, struct, socket, itertools, os
 
 # OptionParser imports
 from optparse import OptionParser
@@ -31,11 +31,13 @@ option_1 = { 'name' : ('-o', '--output'), 'help' : 'csv output filename (stdout 
 option_2 = { 'name' : ('-f', '--format'), 'help' : 'csv column format { fqdn, hop_number, ip, mac_address, mac_vendor, port, protocol, os, service, version } (default : ip-fqdn-port-protocol-service-version)', 'nargs' : 1 }
 option_3 = { 'name' : ('-n', '--newline'), 'help' : 'insert a newline between each host for better readability', 'action' : 'count' }
 option_4 = { 'name' : ('-s', '--skip-header'), 'help' : 'do not print the csv header', 'action' : 'count' }
+option_5 = { 'name' : ('-d', '--directory'), 'help' : 'Convert all Nmap scan output files in a directory ', 'nargs' : 1 }
 
-options = [option_0, option_1, option_2, option_3, option_4]
+options = [option_0, option_1, option_2, option_3, option_4, option_5]
 
 # Format option
-DEFAULT_FORMAT = 'ip-fqdn-port-protocol-service-version'
+DEFAULT_FORMAT = 'ip-mac_address-mac_vendor-port-protocol-os-service-version'
+
 SUPPORTED_FORMAT_OBJECTS = [ 'fqdn', 'hop_number', 'ip', 'mac_address', 'mac_vendor', 'port', 'protocol', 'os', 'service', 'version' ]
 INVALID_FORMAT = 10
 VALID_FORMAT = 11
@@ -278,7 +280,7 @@ def split_grepable_match(raw_string) :
 	
 	return current_host
 
-def parse(fd) :
+def parse(fd, IPs={}) :
 	"""
 		Parse the data according to several regexes
 		
@@ -288,7 +290,6 @@ def parse(fd) :
 	"""
 	global p_ip_elementary, p_ip, p_port, p_grepable
 	
-	IPs = {}
 	last_host = None
 	
 	lines = [l.rstrip() for l in fd.readlines()]
@@ -307,7 +308,9 @@ def parse(fd) :
 			
 			new_host = Host(IP_str, FQDN_str)
 			
-			IPs[new_host.get_ip_num_format()] = new_host
+			print new_host.get_ip_dotted_format()
+			if not (new_host.get_ip_num_format() in IPs):
+				IPs[new_host.get_ip_num_format()] = new_host
 			
 			last_host = new_host
 			
@@ -358,8 +361,8 @@ def parse(fd) :
 				IPs[new_host.get_ip_num_format()] = new_host
 				
 				last_host = new_host
-	
 	return IPs
+
 
 def check_supplied_format(fmt):
 	"""
@@ -466,33 +469,51 @@ def main(options, arguments):
 		else:
 			parser.error("Please specify a valid output format.\n\
 			 Supported objects are { fqdn, ip, mac_address, mac_vendor, port, protocol, os, service, version }.")
-	
+
+	# results = {}
 	# Input descriptor
 	if (options.input != None) :
 		fd_input = open(options.input, 'rb')
-	else :
+		# Analysis
+		results = parse(fd_input)
+	elif(options.directory != None):
+		path = os.path.abspath(options.directory)
+		results = {}
+		for fd in os.listdir(path):
+			if fd.endswith(".xml") | fd.endswith(".nmap")  | fd.endswith(".gnmap"):
+				print fd
+				fd_input = open(os.path.join(path, fd), 'rb')
+				results = parse(fd_input, results)
+	else:
 		# No input file specified, reading from stdin
 		fd_input = sys.stdin
+		# Analysis
+		results = parse(fd_input)
 	
-	# Analysis	
-	results = parse(fd_input)
 	fd_input.close()
-	
+
+	# Newline
+	newline = {True: YES_NEWLINE, False: NO_NEWLINE}[options.newline != None]
+
+	# Header
+	header = {True: NO_HEADER, False: YES_HEADER}[options.skip_header != None]
+
 	# Output descriptor
-	if (options.output != None) :
+	if ((options.output != None) & (options.input != None)):
 		fd_output = open(options.output, 'wb')
+		# CSV output
+		generate_csv(fd_output, results, output_format, header, newline)
+	elif((options.output != None) & (options.directory != None)):
+		# All output is send to the same file
+		fd_output = open(options.output, 'ab')
+		# CSV output
+		generate_csv(fd_output, results, output_format, header, newline)
 	else :
 		# No output file specified, writing to stdout
 		fd_output = sys.stdout
-	
-	# Newline
-	newline = {True : YES_NEWLINE, False : NO_NEWLINE}[options.newline != None]
-	
-	# Header
-	header = {True : NO_HEADER, False : YES_HEADER}[options.skip_header != None]  
-	
-	# CSV output
-	generate_csv(fd_output, results, output_format, header, newline)
+		# CSV output
+		generate_csv(fd_output, results, output_format, header, newline)
+
 	fd_output.close()
 	
 	return

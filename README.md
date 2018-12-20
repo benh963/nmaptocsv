@@ -11,6 +11,7 @@ Features
 * Support of Nmap any version Grepable format output (-oG)
 * Parsing main information : IP, FQDN, MAC address and vendor, open ports, tcp/udp protocols, listening services and versions, OS, Number of hops to the target
 * Custom output format following the main items
+* Convert all Nmap scan output files in a directory
 
 Usage
 -----
@@ -35,6 +36,7 @@ Options:
   -n, --newline         insert a newline between each host for better
                         readability
   -s, --skip-header     do not print the csv header
+  -d, --directory       Convert all Nmap output files in a directory
 ```
 
 ### Nmap Normal format (default output format -oN)
